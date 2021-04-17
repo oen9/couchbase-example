@@ -1,21 +1,22 @@
 package example
 
+import cats.effect.Async
 import cats.effect.IOApp
-import cats.effect.Sync
+import cats.effect.std.Console
 import cats.effect.{ExitCode, IO}
 import cats.implicits._
+import example.commons.Logging
 import org.typelevel.log4cats.Logger
-import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-object Hello extends IOApp {
-  implicit def unsafeLogger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+object Hello extends IOApp with Logging {
 
   override def run(args: List[String]): IO[ExitCode] = app[IO]()
 
-  def app[F[_]: Sync](): F[ExitCode] =
+  def app[F[_]: Async: Console](): F[ExitCode] =
     for {
       _   <- Logger[F].info("Hello, world!")
       cfg <- AppConfig.load
-      _   <- Logger[F].debug(cfg.toString())
+      _   <- Logger[F].debug(s"$cfg")
+      _   <- DirtyCouchbaseExample.exec(cfg.couchbase)
     } yield ExitCode.Success
 }
