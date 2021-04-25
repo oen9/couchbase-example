@@ -1,6 +1,7 @@
 package example
 
 import cats.effect.Async
+import cats.effect.kernel.Resource
 import cats.implicits._
 import com.couchbase.client.java.Cluster
 import com.couchbase.client.java.json.JsonObject
@@ -12,17 +13,23 @@ import org.typelevel.log4cats.Logger
 
 object DirtyCouchbaseExample extends Logging {
 
-  def exec[F[_]: Async](cfg: CouchbaseConfig): F[Unit] =
+  def exec[F[_]: Async](cfg: CouchbaseConfig): F[Unit] = makeCluster(cfg).use { cluster =>
     for {
       _    <- Logger[F].info("Starting couchbase app")
-      coll <- connect(cfg)
+      coll <- getCollection(cluster, cfg)
       _    <- insertFooDate(coll)
       _    <- insertCaseClass(coll)
+      _    <- lockTest(coll)
       _    <- Logger[F].info("Couchbase app finished")
     } yield ()
+  }
 
-  def connect[F[_]: Async](cfg: CouchbaseConfig): F[ReactiveCollection] = Async[F].delay {
-    val cluster        = Cluster.connect(cfg.host, cfg.username, cfg.password);
+  def makeCluster[F[_]: Async](cfg: CouchbaseConfig): Resource[F, Cluster] =
+    Resource.make {
+      Async[F].delay(Cluster.connect(cfg.host, cfg.username, cfg.password))
+    }(cluster => Async[F].delay(cluster.disconnect()))
+
+  def getCollection[F[_]: Async](cluster: Cluster, cfg: CouchbaseConfig): F[ReactiveCollection] = Async[F].delay {
     val bucket         = cluster.bucket(cfg.bucket)
     val reactiveBucket = bucket.reactive()
     reactiveBucket.defaultCollection()
@@ -30,7 +37,6 @@ object DirtyCouchbaseExample extends Logging {
 
   def insertFooDate[F[_]: Async](coll: ReactiveCollection): F[Unit] =
     for {
-      _            <- Async[F].unit
       insertResult <- coll.upsert("foo", "bar" + ZonedDateTime.now()).toAsyncF
       _            <- Logger[F].debug(insertResult.toString())
       getResult    <- coll.get("foo").toAsyncF
@@ -57,8 +63,12 @@ object DirtyCouchbaseExample extends Logging {
       resultAsJson = getResult.contentAsObject().toString()
       parsed <- Async[F].fromEither(decode[MyFooClass](resultAsJson))
 
-      _      <- Logger[F].info(parsed.toString())
+      _ <- Logger[F].info(parsed.toString())
     } yield ()
   }
 
+  def lockTest[F[_]: Async](coll: ReactiveCollection): F[Unit] =
+    for {
+      _ <- Logger[F].debug("Lock test: maybe soon ...")
+    } yield ()
 }
