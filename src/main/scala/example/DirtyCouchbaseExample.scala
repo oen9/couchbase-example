@@ -26,8 +26,8 @@ object DirtyCouchbaseExample extends Logging {
 
   def makeCluster[F[_]: Async](cfg: CouchbaseConfig): Resource[F, Cluster] =
     Resource.make {
-      Async[F].delay(Cluster.connect(cfg.host, cfg.username, cfg.password))
-    }(cluster => Async[F].delay(cluster.disconnect()))
+      Async[F].blocking(Cluster.connect(cfg.host, cfg.username, cfg.password))
+    }(cluster => Async[F].blocking(cluster.disconnect()))
 
   def getCollection[F[_]: Async](cluster: Cluster, cfg: CouchbaseConfig): F[ReactiveCollection] = Async[F].delay {
     val bucket         = cluster.bucket(cfg.bucket)
